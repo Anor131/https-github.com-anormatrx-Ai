@@ -1,57 +1,65 @@
+import { KeyHunterAgent } from "./KeyHunterAgent";
+
 export class MissionControl {
   private genAI: any;
   private planner: any;
   private gemma: any;
+  private keyHunter: KeyHunterAgent;
 
   constructor(genAI: any, planner: any, gemma: any) {
     this.genAI = genAI;
     this.planner = planner;
     this.gemma = gemma;
+    this.keyHunter = new KeyHunterAgent();
   }
 
-  public async executeMission(task: string, openaiApiKey?: string): Promise<string> {
-    console.log("💀 Gemini: Analyzing risks and cleaning context...");
+  // 1. تفعيل العقل واختيار المسار
+  public async executeMission(userPrompt: string, openaiApiKey?: string, desktopPath: string = "default"): Promise<string> {
+    console.log("💀 Starting Integrated Sequence...");
+
+    // الخطوة أ: استدعاء وكيل المفاتيح (Key-Hunter)
+    const isActivated = this.keyHunter.fetchAndActivate(["gpt4", "gemini"]);
     
-    // 1. Gemini Pre-check (Advisor)
-    let cleanedTask = task;
-    if (this.genAI) {
-      try {
-        const preCheckResult = await this.genAI.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: [{ role: "user", parts: [{ text: `قم بتحليل مخاطر الأمر التالي وتنظيف سياقه ليكون جاهزاً للتنفيذ البرمجي. أرجع فقط النص المنظف:\n\n${task}` }] }]
-        });
-        cleanedTask = preCheckResult.text || task;
-      } catch (error) {
-        console.error("Gemini Pre-check failed:", error);
-      }
+    if (!isActivated) {
+      return "OFFLINE - Keys Missing. Please check your .env configuration.";
     }
 
-    console.log("🧠 GPT-4: Generating plan...");
-    // 2. The Planner (GPT-4)
-    const plan = await this.planner.plan(cleanedTask, openaiApiKey, this.genAI);
-    
-    console.log("⚙️ Gemma: Executing raw tasks...");
-    // 3. The Executor (Gemma-3-Local)
-    const rawWork = await this.gemma.execute(JSON.stringify(plan));
-    
-    // 4. Gemini Post-check (The Gate)
-    return this.callGeminiToFinalize(rawWork);
+    // الخطوة ب: تحديث الحالة إلى ONLINE في الواجهة (handled by frontend)
+    console.log("✅ System ONLINE. Initiating Triple-Threat Cycle.");
+
+    // الخطوة ج: دورة المعالجة الثلاثية (The Triple-Threat Cycle)
+    return await this.executeAutonomousCycle(userPrompt, desktopPath, openaiApiKey);
   }
 
-  private async callGeminiToFinalize(work: string): Promise<string> {
-    console.log("💀 Gemini: Cleaning and securing the mission...");
-    
-    if (!this.genAI) return work;
+  // 2. دورة المعالجة (GPT4 -> Gemma -> Gemini)
+  private async executeAutonomousCycle(prompt: string, path: string, openaiApiKey?: string): Promise<string> {
+    console.log("🧠 Distributor (GPT-4): Generating plan...");
+    // نرسل الإشارة للموزع (GPT-4) ليرسم الخطة
+    const plan = await this.planner.plan(prompt, openaiApiKey, this.genAI);
+
+    console.log("⚙️ Executor (Gemma-3-4b-it-abliterated): Executing raw tasks...");
+    // نرسل الخطة للمنفذ المحلي (Gemma-3-4b-it-abliterated)
+    const rawCode = await this.gemma.execute(JSON.stringify(plan));
+
+    console.log("💀 Cleaner (Gemini): Repairing and linking...");
+    // المرحلة النهائية: أنا (Gemini) أقوم بالإصلاح والتنظيف والربط
+    const finalResult = await this.geminiRepair(rawCode, path);
+
+    return finalResult;
+  }
+
+  private async geminiRepair(rawCode: string, path: string): Promise<string> {
+    if (!this.genAI) return rawCode;
 
     try {
       const postCheckResult = await this.genAI.models.generateContent({
         model: "gemini-3.1-pro-preview",
-        contents: [{ role: "user", parts: [{ text: `قم بمراجعة، تنظيف، وإصلاح هذا المخرج وربطه بالأشفات قبل العرض النهائي. أرجع النسخة النهائية الآمنة فقط:\n\n${work}` }] }]
+        contents: [{ role: "user", parts: [{ text: `قم بمراجعة، تنظيف، وإصلاح هذا المخرج وربطه بالأشفات قبل العرض النهائي. أرجع النسخة النهائية الآمنة فقط للمسار ${path}:\n\n${rawCode}` }] }]
       });
-      return postCheckResult.text || work;
+      return postCheckResult.text || rawCode;
     } catch (error) {
-      console.error("Gemini Post-check failed:", error);
-      return work;
+      console.error("Gemini Repair failed:", error);
+      return rawCode;
     }
   }
 }
