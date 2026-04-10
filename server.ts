@@ -14,6 +14,7 @@ import { GitHubService } from "./src/services/server/GitHubService";
 import { KeyHunterAgent } from "./src/services/server/KeyHunterAgent";
 import { MissionControl } from "./src/services/server/MissionControl";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import fs from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -115,6 +116,7 @@ async function startServer() {
   const web = new WebAutomationService();
   const github = new GitHubService();
   const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY } : undefined);
+  const openai = new OpenAI(process.env.OPENAI_API_KEY ? { apiKey: process.env.OPENAI_API_KEY } : { apiKey: "dummy" });
   const missionControl = new MissionControl(genAI, planner, gemma);
 
   app.use(express.json());
@@ -365,19 +367,35 @@ async function startServer() {
 
         case "gpt4":
           if (process.env.OPENAI_API_KEY) {
-            const response = await fetch("https://api.openai.com/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-              },
-              body: JSON.stringify({
+            if (req.body.stream) {
+              res.setHeader('Content-Type', 'text/event-stream');
+              res.setHeader('Cache-Control', 'no-cache');
+              res.setHeader('Connection', 'keep-alive');
+              
+              res.write(`data: ${JSON.stringify({ text: "[GPT-4]\n\n" })}\n\n`);
+              
+              const stream = await openai.chat.completions.create({
                 model: "gpt-4",
-                messages: [{ role: "user", content: prompt }]
-              })
-            });
-            const data = await response.json();
-            reply = `[GPT-4] ${data.choices[0].message.content}`;
+                messages: [{ role: "user", content: prompt }],
+                stream: true,
+              });
+
+              for await (const chunk of stream) {
+                const content = chunk.choices[0]?.delta?.content || "";
+                if (content) {
+                  res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+                }
+              }
+              res.write(`data: [DONE]\n\n`);
+              res.end();
+              return;
+            } else {
+              const response = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [{ role: "user", content: prompt }],
+              });
+              reply = `[GPT-4] ${response.choices[0].message.content}`;
+            }
           } else {
             const result = await genAI.models.generateContent({
               model: "gemini-3-flash-preview",
