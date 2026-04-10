@@ -122,8 +122,8 @@ export default function OpenClawCore() {
                   <h4 className="text-xs font-bold mb-1">{target.name}</h4>
                   <p className="text-[8px] text-white/30 mb-3 font-mono">{target.desc}</p>
                   <div className="flex items-center justify-center gap-1.5">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-[8px] font-bold text-green-500 uppercase tracking-tighter">{target.status}</span>
+                    <div className={`h-1.5 w-1.5 rounded-full animate-pulse ${target.status === 'ONLINE' ? 'bg-green-500' : target.status === 'OFFLINE' ? 'bg-red-500' : 'bg-yellow-500'}`} />
+                    <span className={`text-[8px] font-bold uppercase tracking-tighter ${target.status === 'ONLINE' ? 'text-green-500' : target.status === 'OFFLINE' ? 'text-red-500' : 'text-yellow-500'}`}>{target.status}</span>
                   </div>
                 </GlassCard>
               </motion.div>

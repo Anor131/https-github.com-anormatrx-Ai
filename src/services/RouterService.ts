@@ -22,9 +22,9 @@ export class RouterService {
       else if (data.reply.includes("تم تنظيف") || data.reply.includes("تم فحص") || data.reply.includes("جارِ تحليل")) type = "maintenance";
       
       return { type, content: data.reply };
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat API failed:", error);
-      return { type: "error", content: "فشل الاتصال بنواة النظام الموحدة." };
+      return { type: "error", content: error.message || "فشل الاتصال بنواة النظام الموحدة." };
     }
   }
 }

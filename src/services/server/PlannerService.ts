@@ -33,11 +33,17 @@ export class PlannerService {
 
     // Fallback to Gemini for planning
     if (genAI) {
-      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-      const result = await model.generateContent(prompt);
-      const fallbackResponse = result.response.text();
-      const jsonStr = fallbackResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-      return JSON.parse(jsonStr);
+      try {
+        const result = await genAI.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: [{ role: "user", parts: [{ text: prompt }] }]
+        });
+        const fallbackResponse = result.text || "";
+        const jsonStr = fallbackResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+        return JSON.parse(jsonStr);
+      } catch (error) {
+        console.error("Gemini Planning failed:", error);
+      }
     }
     
     return { steps: ["analyze", "prepare", "execute"] };

@@ -40,6 +40,7 @@ export default function IsolatedLab() {
   const [memoryValue, setMemoryValue] = useState("");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"terminal" | "editor">("terminal");
+  const [cwd, setCwd] = useState<string>("");
 
   const executeAction = async (action: string, payload?: any) => {
     setIsExecuting(true);
@@ -47,7 +48,7 @@ export default function IsolatedLab() {
     
     try {
       const endpoint = action === "run" ? "/api/terminal" : "/api/agent/execute";
-      const body = action === "run" ? { command: payload } : { action, payload };
+      const body = action === "run" ? { command: payload, cwd } : { action, payload };
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -57,10 +58,14 @@ export default function IsolatedLab() {
       
       const data = await response.json();
       
+      if (action === "run" && data.cwd) {
+        setCwd(data.cwd);
+      }
+      
       const newLog: AgentLog = {
         timestamp: new Date().toLocaleTimeString(),
         action,
-        result: data.output || data.result
+        result: data.error || data.output || data.result
       };
       
       setLogs(prev => [newLog, ...prev]);
@@ -164,22 +169,40 @@ export default function IsolatedLab() {
                   className="h-full flex flex-col gap-4"
                 >
                   <GlassCard className="p-4" glowColor="rgba(168, 85, 247, 0.1)">
-                    <div className="flex gap-2">
-                      <Input 
-                        value={command}
-                        onChange={(e) => setCommand(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && executeAction("run", command)}
-                        placeholder="أدخل أمر النظام..."
-                        className="bg-white/5 border-white/10 h-10 text-xs focus:border-purple-500/50"
-                      />
-                      <Button 
-                        size="icon" 
-                        onClick={() => executeAction("run", command)}
-                        disabled={isExecuting || !command}
-                        className="bg-purple-500 hover:bg-purple-400 text-black shrink-0"
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
+                    <div className="flex flex-col gap-2">
+                      {cwd && (
+                        <div className="text-[10px] font-mono text-purple-400/80 flex items-center gap-1">
+                          <span className="text-white/40">cwd:</span> {cwd}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <div className="flex items-center justify-center px-3 bg-white/5 border border-white/10 rounded-md text-purple-400 font-mono text-xs">
+                          $
+                        </div>
+                        <Input 
+                          value={command}
+                          onChange={(e) => setCommand(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !isExecuting && command) {
+                              executeAction("run", command);
+                              setCommand("");
+                            }
+                          }}
+                          placeholder="أدخل أمر النظام (ls, cd, cat, الخ)..."
+                          className="bg-white/5 border-white/10 h-10 text-xs focus:border-purple-500/50 font-mono"
+                        />
+                        <Button 
+                          size="icon" 
+                          onClick={() => {
+                            executeAction("run", command);
+                            setCommand("");
+                          }}
+                          disabled={isExecuting || !command}
+                          className="bg-purple-500 hover:bg-purple-400 text-black shrink-0"
+                        >
+                          <Play className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </GlassCard>
                   

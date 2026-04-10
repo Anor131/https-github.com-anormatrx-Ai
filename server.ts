@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -10,6 +11,8 @@ import { GemmaService } from "./src/services/server/GemmaService";
 import { PluginService } from "./src/services/server/PluginService";
 import { WebAutomationService } from "./src/services/server/WebAutomationService";
 import { GitHubService } from "./src/services/server/GitHubService";
+import { KeyHunterAgent } from "./src/services/server/KeyHunterAgent";
+import { MissionControl } from "./src/services/server/MissionControl";
 import { GoogleGenAI } from "@google/genai";
 import fs from "fs";
 import { exec } from "child_process";
@@ -23,6 +26,14 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  
+  // Initialize Key Hunter Agent
+  const hunter = new KeyHunterAgent();
+  const modelsToActivate = ["gpt4", "gemma", "gemini"];
+  if (hunter.fetchAndActivate(modelsToActivate)) {
+    console.log("🔥 System Hijacked and Activated Successfully.");
+  }
+
   const agent = new DarkRoomAgent();
   const maintenance = new MaintenanceService();
   const memory = new MemoryService();
@@ -31,7 +42,8 @@ async function startServer() {
   const plugins = new PluginService();
   const web = new WebAutomationService();
   const github = new GitHubService();
-  const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+  const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY } : undefined);
+  const missionControl = new MissionControl(genAI, planner, gemma);
 
   app.use(express.json());
 
@@ -96,12 +108,34 @@ async function startServer() {
 
   // Terminal Endpoint
   app.post("/api/terminal", async (req, res) => {
-    const { command } = req.body;
+    const { command, cwd } = req.body;
+    const currentDir = cwd || process.cwd();
+    
     try {
-      const { stdout, stderr } = await execAsync(command);
-      res.json({ output: stdout || stderr });
-    } catch (error) {
-      res.status(500).json({ error: String(error) });
+      let actualCommand = command;
+      let isCd = false;
+      
+      if (command.trim().startsWith('cd ') || command.trim() === 'cd') {
+        isCd = true;
+        actualCommand = command.trim() === 'cd' ? 'cd ~ && pwd' : `${command} && pwd`;
+      }
+
+      const { stdout, stderr } = await execAsync(actualCommand, { cwd: currentDir });
+      
+      let newCwd = currentDir;
+      let output = stdout || stderr;
+
+      if (isCd) {
+        newCwd = stdout.trim();
+        output = `Changed directory to ${newCwd}`;
+        if (stderr) {
+          output += `\nWarnings:\n${stderr}`;
+        }
+      }
+
+      res.json({ output, cwd: newCwd });
+    } catch (error: any) {
+      res.status(500).json({ error: String(error.stderr || error.message || error) });
     }
   });
 
@@ -131,18 +165,24 @@ async function startServer() {
 
   // Diagnostics Endpoint
   app.get("/api/diagnostics", (req, res) => {
+    const hasGemini = !!process.env.GEMINI_API_KEY;
+    const hasOpenAI = !!process.env.OPENAI_API_KEY;
+    
+    // Simulate Key Hunter Agent logic
+    const aiModelsStatus = (hasGemini || hasOpenAI) ? "ONLINE" : "OFFLINE";
+    
     res.json({
       status: "Healthy",
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       modules: {
-        orchestrator: "Active",
-        ai_models: "Active",
-        sandbox: "Active",
-        terminal: "Active",
-        files: "Active",
-        github: "Active",
-        web_automation: "Active"
+        orchestrator: "ONLINE",
+        ai_models: aiModelsStatus,
+        sandbox: "ONLINE",
+        terminal: "ONLINE",
+        files: "ONLINE",
+        github: "ONLINE",
+        web_automation: "ONLINE"
       }
     });
   });
@@ -174,10 +214,9 @@ async function startServer() {
       
       switch (type) {
         case "plan":
-          const plan = await planner.plan(message, process.env.OPENAI_API_KEY, genAI);
-          memory.addProject(message, plan);
-          const execution = await gemma.execute(JSON.stringify(plan));
-          reply = `**[PROJECT PLAN GENERATED]**\n${JSON.stringify(plan, null, 2)}\n\n**[EXECUTION BY GEMMA]**\n${execution}`;
+          const finalMission = await missionControl.executeMission(message, process.env.OPENAI_API_KEY);
+          memory.addProject(message, finalMission);
+          reply = `**[MISSION SECURED & OPTIMIZED BY GEMINI] 🛡️**\n\n${finalMission}`;
           break;
 
         case "web":
@@ -266,9 +305,15 @@ async function startServer() {
       }
 
       res.json({ reply });
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[Chat API] Error:`, error);
-      res.status(500).json({ error: "Chat processing failed" });
+      
+      let errorMessage = "Chat processing failed";
+      if (error?.message?.includes("API key not valid") || error?.message?.includes("API_KEY_INVALID")) {
+        errorMessage = "مفتاح API غير صالح. يرجى التحقق من إعدادات الأسرار (Secrets) وتحديث GEMINI_API_KEY.";
+      }
+      
+      res.status(500).json({ error: errorMessage });
     }
   });
 

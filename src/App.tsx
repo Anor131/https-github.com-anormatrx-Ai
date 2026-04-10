@@ -17,7 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeModule, setActiveModule] = useState("dashboard");
+  const [activeModule, setActiveModule] = useState("chat");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
